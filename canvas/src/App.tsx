@@ -16,6 +16,23 @@ export const App = observer(function App() {
   const store = useMemo(() => new CanvasStore(getTargetURL()), [])
   const viewportRef = useRef<HTMLDivElement>(null)
 
+  // Expose store and helpers on window for debugging/testing
+  useEffect(() => {
+    function getViewport() {
+      const el = viewportRef.current
+      if (!el) return { width: window.innerWidth, height: window.innerHeight }
+      return { width: el.clientWidth, height: el.clientHeight }
+    }
+
+    ;(window as any).__vitebox = {
+      store,
+      fitAll() { const vp = getViewport(); store.fitAll(vp.width, vp.height) },
+      fitSelected() { const vp = getViewport(); store.fitSelected(vp.width, vp.height) },
+      zoomTo100() { const vp = getViewport(); store.zoomTo100(vp.width, vp.height) },
+      select(id: string | null) { store.select(id) },
+    }
+  }, [store])
+
   // Fit all on initial load
   useEffect(() => {
     const el = viewportRef.current
