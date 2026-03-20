@@ -11,7 +11,8 @@ cli
   .command("dev <experiment>", "Start dev server for an experiment")
   .option("--project <path>", "Path to container project (must have vite.config.ts)")
   .option("--port <port>", "Dev server port")
-  .action(async (experiment: string, options: { project?: string; port?: number }) => {
+  .option("--canvas", "Open responsive canvas preview")
+  .action(async (experiment: string, options: { project?: string; port?: number; canvas?: boolean }) => {
     if (!options.project) {
       console.error("Error: --project is required")
       process.exit(1)
@@ -24,6 +25,7 @@ cli
       projectRoot,
       experimentPath,
       port: options.port,
+      canvas: options.canvas,
     })
   })
 

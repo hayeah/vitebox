@@ -5,6 +5,9 @@ import { CanvasViewport } from "./CanvasViewport"
 import { Toolbar } from "./Toolbar"
 
 function getTargetURL(): string {
+  // Injected by vitebox canvas server, or passed as query param for dev
+  const injected = (window as any).__VITEBOX_URL__
+  if (injected) return injected
   const params = new URLSearchParams(window.location.search)
   return params.get("url") ?? "http://localhost:5173"
 }

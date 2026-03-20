@@ -3,15 +3,17 @@ import path from "path"
 import { createServer } from "vite"
 import { viteboxPlugin } from "./plugin.js"
 import { resolveEntry, findViteConfig } from "./resolve.js"
+import { startCanvasServer } from "./canvas-server.js"
 
 export interface DevOptions {
   projectRoot: string
   experimentPath: string
   port?: number
+  canvas?: boolean
 }
 
 export async function startDev(options: DevOptions) {
-  const { projectRoot, experimentPath, port } = options
+  const { projectRoot, experimentPath, port, canvas } = options
 
   const viteConfigPath = findViteConfig(projectRoot)
   if (!viteConfigPath) {
@@ -37,4 +39,11 @@ export async function startDev(options: DevOptions) {
 
   await server.listen()
   server.printUrls()
+
+  if (canvas) {
+    const devAddr = server.resolvedUrls?.local[0]
+    const devPort = devAddr ? new URL(devAddr).port : String(port ?? 5173)
+    const canvasPort = await startCanvasServer(parseInt(devPort))
+    console.log(`  ➜  Canvas:  http://localhost:${canvasPort}/`)
+  }
 }
