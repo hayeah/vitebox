@@ -1,5 +1,5 @@
 ---
-overview: Spec for "vitebox" — a Vite-based sandbox CLI that lets you run ad-hoc React experiments by pointing at a component file anywhere on disk, without per-project config overhead. Covers entry modes, alias resolution, canvas preview, and similar prior art.
+overview: Spec for "vitebox" — a Vite-based sandbox CLI that lets you run ad-hoc React experiments by pointing at a component file anywhere on disk, without per-project config overhead. Covers alias resolution, canvas preview, and similar prior art.
 repo: ~/github.com/hayeah/vitebox
 tags:
   - spec
@@ -22,75 +22,36 @@ You want to **vibe** — spin up a component, iterate, move on.
 
 `vitebox` is a CLI wrapper around Vite that:
 - Uses an existing project as the **sandbox container** (its `package.json`, `vite.config`, `node_modules`)
-- Lets you point at a **directory** or a **`.tsx` file** as the experiment
-- Two entry modes: **raw entry** (full control) and **wrapper** (quick experiments)
-- No per-experiment config
+- Lets you point at a **directory** or a **`.tsx` file** as the entry
+- The entry file handles everything — imports, CSS, rendering, setup
+- Vitebox just provides the HTML shell, shared deps, and dev server
 
 ```
-# Raw entry — experiment handles its own setup
-vitebox dev --project ~/magicpath --entry main.tsx ~/magicpath/epub-bauhauss/src
-
-# Wrapper — vitebox wraps a component in createRoot + StrictMode
-vitebox dev --project ~/magicpath ~/experiments/quick-test
+vitebox dev --project ~/magicpath/alice ~/magicpath/stripe-blog/src/main.tsx
+vitebox dev --project ~/magicpath/alice ~/experiments/my-app
 ```
 
 ---
 
-## Entry Modes
+## Entry Resolution
 
-### Raw Entry Mode
+- `<path>` is a directory → loads `<path>/index.tsx`
+- `<path>` is a `.tsx` file → loads that file directly
 
-When the experiment directory has `index.tsx`, or `--entry <file>` is specified, vitebox uses it as a **raw entry** — loaded directly as a `<script type="module">` in the generated HTML. No `createRoot` wrapping, no `StrictMode`, no auto-imported CSS.
-
-The entry file handles everything: imports, CSS, rendering, setup.
-
-Use this for:
-- Existing apps with their own `main.tsx` / `index.tsx`
-- Experiments that need custom setup (framer-motion config, theme providers, etc.)
-
-```
-# Directory with index.tsx — raw entry
-vitebox dev --project ~/magicpath ~/experiments/full-app
-
-# Explicit entry file
-vitebox dev --project ~/magicpath --entry main.tsx ~/magicpath/stripe-blog/src
-```
-
-### Wrapper Mode
-
-When no `index.tsx` exists and no `--entry` is specified, vitebox generates a wrapper that:
-- Auto-imports `index.css` if present
-- Imports the component (from `App.tsx` or passed `.tsx` file)
-- Wraps it in `createRoot` + `StrictMode`
-
-Use this for quick one-off component experiments.
-
-```
-# Wrapper mode — vitebox wraps the component
-vitebox dev --project ~/magicpath ~/experiments/quick-test
-vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
-```
+The entry must handle its own rendering (`createRoot`, CSS imports, etc.). Vitebox does not wrap or auto-import anything — it just generates an HTML shell with `<div id="root">` and a `<script type="module">` pointing at the entry.
 
 ## Directory Layout
 
 Experiments can live anywhere — inside the container, in a separate repo, wherever.
 
 ```
-# Raw entry — full app
-~/experiments/full-app/
-  index.tsx       ← raw entry (handles its own setup)
+~/experiments/my-app/
+  index.tsx       ← entry (handles its own createRoot, CSS imports, etc.)
   index.css
   helpers.ts
 
-# Wrapper — quick component
-~/experiments/quick-test/
-  App.tsx          ← component with default export
-  index.css        ← auto-imported by wrapper
-  helpers.ts
-
-# Existing project source
 ~/magicpath/stripe-blog/src/
-  main.tsx         ← use with --entry main.tsx
+  main.tsx         ← point at this file directly
   App.tsx
   index.css
   components/
@@ -129,30 +90,14 @@ This lets experiments shadow project modules with local overrides, while still i
 ### `vitebox dev <path>`
 
 - `--project <path>` (required) — container project root (must have `vite.config.ts`)
-- `--entry <file>` — specify entry file name (e.g. `main.tsx`), treated as raw entry
 - `--canvas` — open responsive canvas preview (mobile, tablet, desktop side by side)
 - `--port <port>` — dev server port
 - `--react-root <selector>` — override the mount element selector (default: `#root`)
 
-Entry resolution:
-- If `--entry` specified → raw entry mode (that file, no wrapper)
-- If `<path>` is a directory with `index.tsx` → raw entry mode
-- If `<path>` is a directory without `index.tsx` → wrapper mode (looks for `App.tsx`)
-- If `<path>` is a `.tsx` file → wrapper mode (wraps that component)
-
 ```
-# Raw entry — existing app
-vitebox dev --project ~/magicpath/alice --entry main.tsx ~/magicpath/stripe-blog/src
-
-# Raw entry — experiment with index.tsx
-vitebox dev --project ~/magicpath/alice ~/experiments/full-app
-
-# Wrapper — quick component experiment
-vitebox dev --project ~/magicpath/alice ~/experiments/quick-test
-vitebox dev --project ~/magicpath/alice ~/magicpath/alice/src/App.tsx
-
-# With canvas preview
-vitebox dev --project ~/magicpath/alice --canvas --entry main.tsx ~/magicpath/epub-bauhauss/src
+vitebox dev --project ~/magicpath/alice ~/magicpath/stripe-blog/src/main.tsx
+vitebox dev --project ~/magicpath/alice ~/experiments/my-app
+vitebox dev --project ~/magicpath/alice --canvas ~/magicpath/epub-bauhauss/src/main.tsx
 ```
 
 ### `vitebox build <path>`
@@ -163,43 +108,26 @@ Same entry resolution as `dev`. Produces static HTML + JS/CSS bundles.
 
 ---
 
-## Auto-wiring Details
+## Generated HTML
 
-### Generated HTML shell
-
-Both modes generate a minimal HTML file (not written to disk):
+Vitebox generates a minimal HTML shell (served from middleware, not written to disk):
 
 ```html
-<div id="root"></div>
-<script type="module" src="..."></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vitebox</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/path/to/entry.tsx"></script>
+</body>
+</html>
 ```
 
-The `id="root"` can be overridden with `--react-root`.
-
-### Raw entry mode
-
-The `<script>` points directly at the entry file. No wrapping.
-
-```html
-<script type="module" src="/path/to/experiment/main.tsx"></script>
-```
-
-### Wrapper mode (entry shim)
-
-A virtual module wraps the component:
-
-```tsx
-import './index.css'               // if <experiment>/index.css exists
-import { StrictMode, createElement } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App'
-
-createRoot(document.getElementById('root')).render(
-  createElement(StrictMode, null, createElement(App))
-)
-```
-
-Uses `createElement` instead of JSX so the shim works in Vite build mode without JSX transform.
+The `id="root"` can be overridden with `--react-root`. The entry file is responsible for calling `createRoot`, importing CSS, and rendering.
 
 ---
 
