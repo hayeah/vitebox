@@ -25,12 +25,16 @@ vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
 
 # Specify a port
 vitebox dev --project ~/magicpath --port 3000 ~/experiments/my-experiment
+
+# Open with responsive canvas preview (mobile, tablet, desktop side by side)
+vitebox dev --project ~/magicpath --canvas ~/experiments/my-experiment
 ```
 
 ### Options
 
 - `--project <path>` (required) — Path to the container project. Must have a `vite.config.ts` at root.
 - `--port <port>` — Dev server port. Auto-selects if not specified.
+- `--canvas` — Open responsive canvas preview (multiple viewports side by side).
 
 ## Concepts
 
@@ -85,6 +89,31 @@ createRoot(document.getElementById("root")!).render(
 )
 ```
 
+### Build
+
+```bash
+# Build static output (default: <experiment>/dist)
+vitebox build --project ~/magicpath ~/experiments/my-experiment
+
+# Custom output directory
+vitebox build --project ~/magicpath --out-dir ./output ~/experiments/my-experiment
+```
+
+## Canvas Preview
+
+The `--canvas` flag opens a Figma-style responsive preview — your experiment rendered in mobile (375x812), tablet (768x1024), and desktop (1440x900) iframes on an infinite zoomable canvas.
+
+Keyboard shortcuts:
+- `Cmd+1` — Fit all artboards
+- `Cmd+2` — Fit selected artboard
+- `Cmd+0` — Zoom to 100%
+- `Cmd++` / `Cmd+-` — Zoom in / out
+- `Scroll` — Pan, `Cmd+Scroll` — Zoom toward cursor
+- `Space+drag` — Hand tool (pan)
+- `Click` artboard — Select, `Double-click` — Interactive mode, `Esc` — Exit
+
+See [docs/canvas.md](docs/canvas.md) for the full design spec.
+
 ## Examples
 
 ```bash
@@ -99,17 +128,27 @@ vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
 
 # Iterate on a component in isolation
 vitebox dev --project ~/magicpath ~/experiments/new-sidebar
+
+# Preview at all breakpoints
+vitebox dev --project ~/magicpath --canvas ~/experiments/new-sidebar
 ```
 
 ## Architecture
 
 ```
 src/
-  cli.ts      # CLI entry (cac-based), parses args, calls startDev()
-  dev.ts      # Resolves entry (file or dir), creates Vite server
-  plugin.ts   # Vite plugin: virtual HTML + virtual entry shim
+  cli.ts            # CLI entry (cac-based), parses args
+  dev.ts            # Dev server: resolves entry, creates Vite server
+  build.ts          # Build: static output via Vite build
+  plugin.ts         # Vite plugin: virtual HTML + virtual entry shim
+  resolve.ts        # Shared: entry resolution, vite config finder
+  canvas-server.ts  # Serves pre-built canvas app with URL injection
+canvas/
+  src/              # React + MobX + Tailwind canvas app
+  vite.config.ts    # Builds to dist/canvas/
 ```
 
-## Spec
+## Docs
 
-See [docs/spec.md](docs/spec.md) for the full design spec.
+- [docs/spec.md](docs/spec.md) — Design spec
+- [docs/canvas.md](docs/canvas.md) — Canvas preview design
