@@ -33,7 +33,7 @@ export async function startDev(options: DevOptions) {
       port: port,
     },
     plugins: [
-      viteboxPlugin({ entryFile, experimentDir, hasCss }),
+      ...viteboxPlugin({ entryFile, experimentDir, projectRoot, hasCss }),
     ],
   })
 

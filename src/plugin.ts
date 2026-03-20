@@ -1,3 +1,4 @@
+import fs from "fs"
 import path from "path"
 import type { Plugin } from "vite"
 
@@ -6,40 +7,66 @@ const RESOLVED_VIRTUAL_ENTRY_ID = "\0" + VIRTUAL_ENTRY_ID
 
 const VIRTUAL_HTML_ID = "vitebox-index.html"
 
+const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ""]
+
 export interface ViteboxPluginOptions {
   entryFile: string
   experimentDir: string
+  projectRoot: string
   hasCss: boolean
 }
 
-export function viteboxPlugin(options: ViteboxPluginOptions): Plugin {
-  const { entryFile, experimentDir, hasCss } = options
+function tryResolve(base: string, rest: string): string | undefined {
+  // Try as directory with index
+  for (const ext of EXTENSIONS) {
+    const asIndex = path.join(base, rest, `index${ext}`)
+    if (fs.existsSync(asIndex)) return asIndex
+  }
+  // Try as file
+  for (const ext of EXTENSIONS) {
+    const asFile = path.join(base, rest + ext)
+    if (fs.existsSync(asFile)) return asFile
+  }
+  return undefined
+}
 
-  return {
+export function viteboxPlugin(options: ViteboxPluginOptions): Plugin[] {
+  const { entryFile, experimentDir, projectRoot, hasCss } = options
+
+  // Dual-resolution @/ alias: experiment src first, project src fallback
+  const aliasPlugin: Plugin = {
+    name: "vitebox-alias",
+    enforce: "pre",
+
+    resolveId(id) {
+      if (!id.startsWith("@/")) return
+      const rest = id.slice(2) // strip "@/"
+
+      // 1. Check experiment's src/ directory
+      const experimentSrc = path.join(experimentDir, "src")
+      const fromExperiment = tryResolve(experimentSrc, rest)
+      if (fromExperiment) return fromExperiment
+
+      // 2. Check experiment root (for non-src layouts)
+      const fromExperimentRoot = tryResolve(experimentDir, rest)
+      if (fromExperimentRoot) return fromExperimentRoot
+
+      // 3. Fall through — let the project's own @/ alias handle it
+      return undefined
+    },
+  }
+
+  const mainPlugin: Plugin = {
     name: "vitebox",
     enforce: "pre",
 
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => {
-        if (req.url === "/" || req.url === "/index.html") {
-          req.url = `/${VIRTUAL_HTML_ID}`
-        }
-        next()
-      })
-    },
+      // Intercept / and /index.html BEFORE Vite serves the project's real index.html.
+      // Serve our virtual HTML directly with Vite's transform pipeline applied.
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== "/" && req.url !== "/index.html") return next()
 
-    resolveId(id) {
-      if (id === VIRTUAL_ENTRY_ID) {
-        return RESOLVED_VIRTUAL_ENTRY_ID
-      }
-      if (id === `/${VIRTUAL_HTML_ID}` || id === VIRTUAL_HTML_ID) {
-        return id
-      }
-    },
-
-    load(id) {
-      if (id === `/${VIRTUAL_HTML_ID}` || id === VIRTUAL_HTML_ID) {
-        return `<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -51,13 +78,27 @@ export function viteboxPlugin(options: ViteboxPluginOptions): Plugin {
   <script type="module" src="/${VIRTUAL_ENTRY_ID}"></script>
 </body>
 </html>`
-      }
 
+        const transformed = await server.transformIndexHtml(req.url!, html)
+        res.setHeader("Content-Type", "text/html")
+        res.end(transformed)
+      })
+    },
+
+    resolveId(id) {
+      if (id === VIRTUAL_ENTRY_ID || id === `/${VIRTUAL_ENTRY_ID}`) {
+        return RESOLVED_VIRTUAL_ENTRY_ID
+      }
+    },
+
+    load(id) {
       if (id === RESOLVED_VIRTUAL_ENTRY_ID) {
         return generateEntryShim(entryFile, experimentDir, hasCss)
       }
     },
   }
+
+  return [aliasPlugin, mainPlugin]
 }
 
 function generateEntryShim(entryFile: string, experimentDir: string, hasCss: boolean): string {

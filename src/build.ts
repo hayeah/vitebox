@@ -56,7 +56,7 @@ export async function startBuild(options: BuildOptions) {
         },
       },
       plugins: [
-        viteboxPlugin({ entryFile, experimentDir, hasCss }),
+        ...viteboxPlugin({ entryFile, experimentDir, projectRoot, hasCss }),
       ],
     })
 
