@@ -16,20 +16,44 @@ export const App = observer(function App() {
   const store = useMemo(() => new CanvasStore(getTargetURL()), [])
   const viewportRef = useRef<HTMLDivElement>(null)
 
-  // Expose store and helpers on window for debugging/testing
+  // Expose stateless API on window for agent/script use
   useEffect(() => {
-    function getViewport() {
+    function vp() {
       const el = viewportRef.current
       if (!el) return { width: window.innerWidth, height: window.innerHeight }
       return { width: el.clientWidth, height: el.clientHeight }
     }
 
     ;(window as any).__vitebox = {
-      store,
-      fitAll() { const vp = getViewport(); store.fitAll(vp.width, vp.height) },
-      fitSelected() { const vp = getViewport(); store.fitSelected(vp.width, vp.height) },
-      zoomTo100() { const vp = getViewport(); store.zoomTo100(vp.width, vp.height) },
-      select(id: string | null) { store.select(id) },
+      state() {
+        return {
+          zoom: store.zoom,
+          panX: store.panX,
+          panY: store.panY,
+          url: store.url,
+          artboards: store.artboards.map((a) => ({
+            id: a.id, name: a.name, width: a.width, height: a.height, x: a.x, y: a.y,
+          })),
+        }
+      },
+      fitAll() {
+        const v = vp(); store.fitAll(v.width, v.height)
+      },
+      fit(artboardId: string) {
+        const v = vp(); store.fitArtboard(artboardId, v.width, v.height)
+      },
+      zoomTo100(artboardId?: string) {
+        const v = vp(); store.zoomTo100(v.width, v.height, artboardId)
+      },
+      addArtboard(opts: { name: string; width: number; height: number }) {
+        return store.addArtboard(opts)
+      },
+      removeArtboard(id: string) {
+        store.removeArtboard(id)
+      },
+      setURL(url: string) {
+        store.setURL(url)
+      },
     }
   }, [store])
 

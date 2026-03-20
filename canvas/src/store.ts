@@ -89,8 +89,8 @@ export class CanvasStore {
     this.zoomToFit(this.boundingBox, viewportWidth, viewportHeight)
   }
 
-  fitSelected(viewportWidth: number, viewportHeight: number) {
-    const artboard = this.selectedArtboard
+  fitArtboard(id: string, viewportWidth: number, viewportHeight: number) {
+    const artboard = this.artboards.find((a) => a.id === id)
     if (!artboard) return
     this.zoomToFit(
       { x: artboard.x, y: artboard.y, width: artboard.width, height: artboard.height },
@@ -99,9 +99,15 @@ export class CanvasStore {
     )
   }
 
-  zoomTo100(viewportWidth: number, viewportHeight: number) {
-    // Center on selection or center of all artboards
-    const target = this.selectedArtboard
+  // Keep for keyboard shortcut compat
+  fitSelected(viewportWidth: number, viewportHeight: number) {
+    if (this.selectedId) this.fitArtboard(this.selectedId, viewportWidth, viewportHeight)
+  }
+
+  zoomTo100(viewportWidth: number, viewportHeight: number, artboardId?: string) {
+    const target = artboardId
+      ? this.artboards.find((a) => a.id === artboardId)
+      : this.selectedArtboard
     const rect = target
       ? { x: target.x, y: target.y, width: target.width, height: target.height }
       : this.boundingBox
@@ -111,6 +117,25 @@ export class CanvasStore {
     this.zoom = 1
     this.panX = viewportWidth / 2 - centerX
     this.panY = viewportHeight / 2 - centerY
+  }
+
+  addArtboard(opts: { name: string; width: number; height: number }) {
+    const id = opts.name.toLowerCase().replace(/\s+/g, "-")
+    // Position to the right of existing artboards
+    const bb = this.boundingBox
+    const x = bb.width > 0 ? bb.x + bb.width + GAP : 0
+    this.artboards.push({ id, name: opts.name, width: opts.width, height: opts.height, x, y: 0 })
+    return id
+  }
+
+  removeArtboard(id: string) {
+    this.artboards = this.artboards.filter((a) => a.id !== id)
+    if (this.selectedId === id) this.selectedId = null
+    if (this.interactiveId === id) this.interactiveId = null
+  }
+
+  setURL(url: string) {
+    this.url = url
   }
 
   zoomAtPoint(delta: number, clientX: number, clientY: number) {
