@@ -69,12 +69,12 @@ function generateEntryShim(entryFile: string, experimentDir: string, hasCss: boo
     lines.push(`import "${cssPath}"`)
   }
 
-  lines.push(`import { StrictMode } from "react"`)
+  lines.push(`import { StrictMode, createElement } from "react"`)
   lines.push(`import { createRoot } from "react-dom/client"`)
   lines.push(`import App from "${entryFile}"`)
   lines.push(``)
-  lines.push(`createRoot(document.getElementById("root")!).render(`)
-  lines.push(`  <StrictMode><App /></StrictMode>`)
+  lines.push(`createRoot(document.getElementById("root")).render(`)
+  lines.push(`  createElement(StrictMode, null, createElement(App))`)
   lines.push(`)`)
 
   return lines.join("\n")
