@@ -1,7 +1,7 @@
 import fs from "fs"
 import path from "path"
 import { build } from "vite"
-import { viteboxPlugin } from "./plugin.js"
+import { viteboxPlugin, generateHTML } from "./plugin.js"
 import { resolveEntry, findViteConfig } from "./resolve.js"
 
 export interface BuildOptions {
@@ -21,28 +21,20 @@ export async function startBuild(options: BuildOptions) {
 
   const { entryFile, experimentDir } = resolveEntry(experimentPath)
 
-  const cssFile = path.join(experimentDir, "index.css")
-  const hasCss = fs.existsSync(cssFile)
-
   // Vite build needs a real index.html file as entry.
-  // Write a temp one to the project root, build, then clean up.
   const tempHtml = path.join(projectRoot, "vitebox-entry.html")
-  const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>vitebox</title>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="virtual:vitebox-entry"></script>
-</body>
-</html>`
-
-  fs.writeFileSync(tempHtml, htmlContent)
+  fs.writeFileSync(tempHtml, generateHTML(entryFile))
 
   const outDir = options.outDir ?? path.join(experimentDir, "dist")
+
+  // Symlink node_modules if needed
+  const experimentNodeModules = path.join(experimentDir, "node_modules")
+  const projectNodeModules = path.join(projectRoot, "node_modules")
+  let createdSymlink = false
+  if (!fs.existsSync(experimentNodeModules) && fs.existsSync(projectNodeModules)) {
+    fs.symlinkSync(projectNodeModules, experimentNodeModules)
+    createdSymlink = true
+  }
 
   try {
     await build({
@@ -56,7 +48,7 @@ export async function startBuild(options: BuildOptions) {
         },
       },
       plugins: [
-        ...viteboxPlugin({ entryFile, experimentDir, projectRoot, hasCss }),
+        ...viteboxPlugin({ entryFile, experimentDir, projectRoot }),
       ],
     })
 
@@ -69,9 +61,9 @@ export async function startBuild(options: BuildOptions) {
 
     console.log(`\nBuild output: ${outDir}`)
   } finally {
-    // Clean up temp HTML
-    if (fs.existsSync(tempHtml)) {
-      fs.unlinkSync(tempHtml)
+    if (fs.existsSync(tempHtml)) fs.unlinkSync(tempHtml)
+    if (createdSymlink) {
+      try { fs.unlinkSync(experimentNodeModules) } catch {}
     }
   }
 }

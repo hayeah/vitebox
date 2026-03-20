@@ -23,9 +23,6 @@ export async function startDev(options: DevOptions) {
 
   const { entryFile, experimentDir } = resolveEntry(experimentPath)
 
-  const cssFile = path.join(experimentDir, "index.css")
-  const hasCss = fs.existsSync(cssFile)
-
   // If experiment dir doesn't have its own node_modules, symlink to project's
   // so that CSS resolvers (Tailwind's enhanced-resolve) can find packages.
   const experimentNodeModules = path.join(experimentDir, "node_modules")
@@ -46,11 +43,10 @@ export async function startDev(options: DevOptions) {
       },
     },
     plugins: [
-      ...viteboxPlugin({ entryFile, experimentDir, projectRoot, hasCss }),
+      ...viteboxPlugin({ entryFile, experimentDir, projectRoot }),
     ],
   })
 
-  // Clean up symlink on server close
   if (createdSymlink) {
     const cleanup = () => {
       try { fs.unlinkSync(experimentNodeModules) } catch {}

@@ -2,18 +2,12 @@ import fs from "fs"
 import path from "path"
 import type { Plugin } from "vite"
 
-const VIRTUAL_ENTRY_ID = "virtual:vitebox-entry"
-const RESOLVED_VIRTUAL_ENTRY_ID = "\0" + VIRTUAL_ENTRY_ID
-
-const VIRTUAL_HTML_ID = "vitebox-index.html"
-
 const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ""]
 
 export interface ViteboxPluginOptions {
   entryFile: string
   experimentDir: string
   projectRoot: string
-  hasCss: boolean
 }
 
 function tryResolve(base: string, rest: string): string | undefined {
@@ -31,7 +25,7 @@ function tryResolve(base: string, rest: string): string | undefined {
 }
 
 export function viteboxPlugin(options: ViteboxPluginOptions): Plugin[] {
-  const { entryFile, experimentDir, projectRoot, hasCss } = options
+  const { entryFile, experimentDir } = options
 
   // Dual-resolution @/ alias: experiment src first, project src fallback
   const aliasPlugin: Plugin = {
@@ -62,11 +56,22 @@ export function viteboxPlugin(options: ViteboxPluginOptions): Plugin[] {
 
     configureServer(server) {
       // Intercept / and /index.html BEFORE Vite serves the project's real index.html.
-      // Serve our virtual HTML directly with Vite's transform pipeline applied.
       server.middlewares.use(async (req, res, next) => {
         if (req.url !== "/" && req.url !== "/index.html") return next()
 
-        const html = `<!DOCTYPE html>
+        const html = generateHTML(entryFile)
+        const transformed = await server.transformIndexHtml(req.url!, html)
+        res.setHeader("Content-Type", "text/html")
+        res.end(transformed)
+      })
+    },
+  }
+
+  return [aliasPlugin, mainPlugin]
+}
+
+export function generateHTML(entryFile: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -75,48 +80,7 @@ export function viteboxPlugin(options: ViteboxPluginOptions): Plugin[] {
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/${VIRTUAL_ENTRY_ID}"></script>
+  <script type="module" src="${entryFile}"></script>
 </body>
 </html>`
-
-        const transformed = await server.transformIndexHtml(req.url!, html)
-        res.setHeader("Content-Type", "text/html")
-        res.end(transformed)
-      })
-    },
-
-    resolveId(id) {
-      if (id === VIRTUAL_ENTRY_ID || id === `/${VIRTUAL_ENTRY_ID}`) {
-        return RESOLVED_VIRTUAL_ENTRY_ID
-      }
-    },
-
-    load(id) {
-      if (id === RESOLVED_VIRTUAL_ENTRY_ID) {
-        return generateEntryShim(entryFile, experimentDir, hasCss)
-      }
-    },
-  }
-
-  return [aliasPlugin, mainPlugin]
-}
-
-function generateEntryShim(entryFile: string, experimentDir: string, hasCss: boolean): string {
-  const cssPath = path.join(experimentDir, "index.css")
-
-  const lines: string[] = []
-
-  if (hasCss) {
-    lines.push(`import "${cssPath}"`)
-  }
-
-  lines.push(`import { StrictMode, createElement } from "react"`)
-  lines.push(`import { createRoot } from "react-dom/client"`)
-  lines.push(`import App from "${entryFile}"`)
-  lines.push(``)
-  lines.push(`createRoot(document.getElementById("root")).render(`)
-  lines.push(`  createElement(StrictMode, null, createElement(App))`)
-  lines.push(`)`)
-
-  return lines.join("\n")
 }
