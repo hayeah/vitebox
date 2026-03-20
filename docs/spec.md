@@ -1,6 +1,6 @@
 ---
-overview: Spec for "vitebox" — a Vite-based sandbox CLI that lets you run ad-hoc React experiments by pointing at a component file anywhere on disk, without per-project config overhead. Covers dev mode, serve mode, alias resolution, and similar prior art.
-repo: (new tool — not yet created)
+overview: Spec for "vitebox" — a Vite-based sandbox CLI that lets you run ad-hoc React experiments by pointing at a component file anywhere on disk, without per-project config overhead. Covers entry modes, alias resolution, canvas preview, and similar prior art.
+repo: ~/github.com/hayeah/vitebox
 tags:
   - spec
 ---
@@ -22,35 +22,79 @@ You want to **vibe** — spin up a component, iterate, move on.
 
 `vitebox` is a CLI wrapper around Vite that:
 - Uses an existing project as the **sandbox container** (its `package.json`, `vite.config`, `node_modules`)
-- Lets you point at a **directory** or a **`.tsx` file** as the experiment entry
-- Directory → loads `index.tsx`; file → loads that file directly
-- `index.css` in the same directory is auto-imported if present
+- Lets you point at a **directory** or a **`.tsx` file** as the experiment
+- Two entry modes: **raw entry** (full control) and **wrapper** (quick experiments)
 - No per-experiment config
 
 ```
-vitebox dev --project ~/magicpath ~/experiments/experiment-012
-vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
+# Raw entry — experiment handles its own setup
+vitebox dev --project ~/magicpath --entry main.tsx ~/magicpath/epub-bauhauss/src
+
+# Wrapper — vitebox wraps a component in createRoot + StrictMode
+vitebox dev --project ~/magicpath ~/experiments/quick-test
 ```
 
 ---
 
-## Directory Layout (Experiments)
+## Entry Modes
+
+### Raw Entry Mode
+
+When the experiment directory has `index.tsx`, or `--entry <file>` is specified, vitebox uses it as a **raw entry** — loaded directly as a `<script type="module">` in the generated HTML. No `createRoot` wrapping, no `StrictMode`, no auto-imported CSS.
+
+The entry file handles everything: imports, CSS, rendering, setup.
+
+Use this for:
+- Existing apps with their own `main.tsx` / `index.tsx`
+- Experiments that need custom setup (framer-motion config, theme providers, etc.)
+
+```
+# Directory with index.tsx — raw entry
+vitebox dev --project ~/magicpath ~/experiments/full-app
+
+# Explicit entry file
+vitebox dev --project ~/magicpath --entry main.tsx ~/magicpath/stripe-blog/src
+```
+
+### Wrapper Mode
+
+When no `index.tsx` exists and no `--entry` is specified, vitebox generates a wrapper that:
+- Auto-imports `index.css` if present
+- Imports the component (from `App.tsx` or passed `.tsx` file)
+- Wraps it in `createRoot` + `StrictMode`
+
+Use this for quick one-off component experiments.
+
+```
+# Wrapper mode — vitebox wraps the component
+vitebox dev --project ~/magicpath ~/experiments/quick-test
+vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
+```
+
+## Directory Layout
 
 Experiments can live anywhere — inside the container, in a separate repo, wherever.
 
 ```
-~/experiments/
-  experiment-012/
-    index.tsx       ← entry component (required)
-    index.css       ← auto-imported if present
-    helpers.ts
-  experiment-013/
-    index.tsx
-  experiment-013_variant2/
-    index.tsx
-```
+# Raw entry — full app
+~/experiments/full-app/
+  index.tsx       ← raw entry (handles its own setup)
+  index.css
+  helpers.ts
 
-Convention: each experiment is a folder with an `index.tsx`. `index.css` is auto-imported if present. Experiments can import other local modules with relative imports — they're just TypeScript.
+# Wrapper — quick component
+~/experiments/quick-test/
+  App.tsx          ← component with default export
+  index.css        ← auto-imported by wrapper
+  helpers.ts
+
+# Existing project source
+~/magicpath/stripe-blog/src/
+  main.tsx         ← use with --entry main.tsx
+  App.tsx
+  index.css
+  components/
+```
 
 ---
 
@@ -68,12 +112,15 @@ MagicPath Project (`/Users/me/Downloads/MagicPath Project`) is the first contain
 
 ---
 
-## Path Alias Resolution
+## Path Alias Resolution (`@/`)
 
-- `@/` — inherited from the project's `vite.config.ts` (vitebox does not override it)
-- `./` — relative to experiment dir (standard behavior)
+Dual-resolution with experiment-first priority:
 
-Experiments use the same `@` alias the project defines. If the project maps `@/` → `src/`, experiments can import `@/components/ui/button` and it resolves to `<project>/src/components/ui/button`.
+- `@/foo` → check experiment's `src/foo` first (if exists)
+- `@/foo` → fall back to project's `@/` alias (e.g. `<project>/src/foo`)
+- `./` → relative to experiment dir (standard behavior)
+
+This lets experiments shadow project modules with local overrides, while still importing shared components (e.g. `@/components/ui/button`, `@/lib/utils`) from the project.
 
 ---
 
@@ -81,54 +128,90 @@ Experiments use the same `@` alias the project defines. If the project maps `@/`
 
 ### `vitebox dev <path>`
 
-- `<path>` is a directory → loads `<path>/index.tsx` as entry
-- `<path>` is a `.tsx` file → loads that file as entry
-- `index.css` in the entry's directory is auto-imported if present
-- Spins up a dedicated Vite dev server (auto-selects port)
-- Hot-reloads on save
-- Resolves `node_modules` from the container project
-- `--project` flag is required — points to the container project root (must have `vite.config.ts`)
+- `--project <path>` (required) — container project root (must have `vite.config.ts`)
+- `--entry <file>` — specify entry file name (e.g. `main.tsx`), treated as raw entry
+- `--canvas` — open responsive canvas preview (mobile, tablet, desktop side by side)
+- `--port <port>` — dev server port
+- `--react-root <selector>` — override the mount element selector (default: `#root`)
+
+Entry resolution:
+- If `--entry` specified → raw entry mode (that file, no wrapper)
+- If `<path>` is a directory with `index.tsx` → raw entry mode
+- If `<path>` is a directory without `index.tsx` → wrapper mode (looks for `App.tsx`)
+- If `<path>` is a `.tsx` file → wrapper mode (wraps that component)
 
 ```
-vitebox dev --project ~/magicpath ~/experiments/experiment-012
-vitebox dev --project ~/magicpath ~/magicpath/src/App.tsx
+# Raw entry — existing app
+vitebox dev --project ~/magicpath/alice --entry main.tsx ~/magicpath/stripe-blog/src
+
+# Raw entry — experiment with index.tsx
+vitebox dev --project ~/magicpath/alice ~/experiments/full-app
+
+# Wrapper — quick component experiment
+vitebox dev --project ~/magicpath/alice ~/experiments/quick-test
+vitebox dev --project ~/magicpath/alice ~/magicpath/alice/src/App.tsx
+
+# With canvas preview
+vitebox dev --project ~/magicpath/alice --canvas --entry main.tsx ~/magicpath/epub-bauhauss/src
 ```
 
-**Future:** `vitebox serve` mode for hosting multiple experiments via URL routing (not in v1).
+### `vitebox build <path>`
+
+Same entry resolution as `dev`. Produces static HTML + JS/CSS bundles.
+
+- `--out-dir <path>` — output directory (default: `<experiment>/dist`)
 
 ---
 
 ## Auto-wiring Details
 
-### Entry shim (virtual module, not written to disk)
+### Generated HTML shell
+
+Both modes generate a minimal HTML file (not written to disk):
+
+```html
+<div id="root"></div>
+<script type="module" src="..."></script>
+```
+
+The `id="root"` can be overridden with `--react-root`.
+
+### Raw entry mode
+
+The `<script>` points directly at the entry file. No wrapping.
+
+```html
+<script type="module" src="/path/to/experiment/main.tsx"></script>
+```
+
+### Wrapper mode (entry shim)
+
+A virtual module wraps the component:
 
 ```tsx
-// generated by vitebox
 import './index.css'               // if <experiment>/index.css exists
-import { StrictMode } from 'react'
+import { StrictMode, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './index'
+import App from './App'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode><App /></StrictMode>
+createRoot(document.getElementById('root')).render(
+  createElement(StrictMode, null, createElement(App))
 )
 ```
 
-That's it. The experiment owns everything — Tailwind, resets, layout. A typical `index.css`:
-
-```css
-@import "tailwindcss";
-```
+Uses `createElement` instead of JSX so the shim works in Vite build mode without JSX transform.
 
 ---
 
-## Implementation Sketch
+## Implementation Details
 
-- TypeScript CLI (`bunx vitebox` or local install)
-- Core: programmatic Vite API (`createServer`, `loadConfigFromFile`)
-- Alias resolution: `@/` → project root via Vite `resolve.alias`
-- Virtual module plugin: `resolveId` + `load` hooks to emit the entry shim per-request
+- TypeScript CLI using `cac` for arg parsing
+- Core: programmatic Vite API (`createServer` for dev, `build` for static output)
+- Dual-resolution `@/` alias: custom Vite resolver plugin checks experiment `src/` first, falls back to project
+- Virtual module plugin: serves HTML directly from middleware, `resolveId` + `load` hooks for entry shim
 - Container resolution: `--project` flag required, expects `vite.config.ts` at project root
+- Node modules: symlinks project's `node_modules` into experiment dir for CSS tooling (cleaned up on exit)
+- Canvas preview: pre-built React app served on a second port, iframes point at dev server
 
 ---
 
