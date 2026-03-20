@@ -1,0 +1,20 @@
+{
+  "name": "vitebox",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "vitebox": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "vite": "^6.3.5",
+    "cac": "^6.7.14"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^22.0.0"
+  }
+}
